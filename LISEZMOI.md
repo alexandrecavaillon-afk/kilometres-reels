@@ -16,6 +16,18 @@ Pays des adresses : le bouton « Adresses en … » (sous les onglets, et dans l
 
 Pour plusieurs adresses de départ : « Plusieurs départs depuis Excel », puis déposez un fichier .xlsx ou .csv (ou collez des cellules copiées depuis Excel dans la barre de recherche). Indiquez les colonnes du nom et de l'adresse, choisissez le type d'établissement : vous obtenez les 1, 3, 5 ou 10 plus proches de chaque départ, et un fichier Excel filtrable.
 
+## Vérification des affectations
+
+Onglet « Vérification » : importez un fichier avec une ligne par établissement, la localisation de l'établissement (code postal ou adresse) et celle du médecin qui le suit, et si vous les avez, la distance et le temps déclarés, le statut, les noms. Le site :
+
+- recalcule chaque trajet (itinéraire le plus rapide, sans trafic) et classe les lignes en conformes, en écart (au-delà de 15 % ou 5 km, et 20 % ou 8 min, réglables) ou non vérifiables (code postal introuvable, par exemple un CEDEX, ou deux codes de la même ville) ;
+- trouve le médecin le plus proche de chaque établissement ;
+- propose une répartition qui réduit au minimum le temps (ou la distance) total, en gardant le même nombre d'établissements par médecin, ou au plus N ;
+- affiche la carte (médecins en bleu, établissements en rouge) et, pour chaque médecin, ses établissements et les plus proches de lui ;
+- produit un rapport Excel en trois onglets : Vérification, Propositions, Médecins.
+
+Sans colonne de nom, un code postal de médecin correspond à un médecin.
+
 ## Types d'établissements
 
 - Personnes âgées : EHPAD, soins de longue durée (USLD), résidences autonomie et EHPA, accueil de jour, soins infirmiers à domicile (SSIAD, SAAS), aide à domicile.
