@@ -48,7 +48,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 
 /* Accueil */
 .home{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:clamp(110px,18vh,190px) 20px 40px;text-align:center}
-.home h1{font-size:clamp(40px,6.4vw,72px);line-height:1.05;letter-spacing:-.045em;font-weight:700;margin:0 0 16px;max-width:24ch}
+.home h1{font-size:clamp(38px,5.6vw,68px);line-height:1.05;letter-spacing:-.045em;font-weight:700;margin:0 0 16px;max-width:26ch}
 .home .sub{font-size:clamp(19px,2.2vw,24px);line-height:1.35;color:var(--muted);margin:0 0 40px;max-width:34ch;letter-spacing:-.02em}
 .search{position:relative;width:min(640px,100%);text-align:left}
 .search .field{display:flex;align-items:center;gap:12px;height:62px;padding:0 10px 0 22px;background:var(--surface);border-radius:31px;box-shadow:var(--shadow);border:1px solid var(--line);transition:box-shadow .2s}
@@ -73,6 +73,40 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .steps3 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);color:var(--ink);font-size:13px}
 .foot{margin-top:auto;padding-top:64px;font-size:12px;color:var(--faint);max-width:720px;line-height:1.5}
 .foot p{margin:0 0 6px}
+
+/* Trajet A → B */
+.modes{margin:0 0 22px;font-size:15px;padding:3px;border-radius:12px}
+.modes button{padding:8px 18px;border-radius:9px}
+#homeRoute{width:min(640px,100%)}
+.rform{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:8px 58px 8px 14px;text-align:left}
+.rrow{display:flex;align-items:center;gap:12px}
+.rrow+.rrow{border-top:1px solid var(--line)}
+.rrow .search{flex:1;width:auto}
+.rform .search .field{height:54px;border:0;box-shadow:none;background:transparent;border-radius:0;padding:0}
+.rform .search .field:focus-within{box-shadow:none}
+.rform .search input{font-size:18px}
+.dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;flex:none}
+.dot.a{background:var(--accent)}.dot.b{background:#ff3b30}
+.swap{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:0;background:var(--surface2);color:var(--accent);display:grid;place-items:center}
+.swap svg{width:18px;height:18px}
+.btn.big{margin-top:16px;padding:14px 30px;font-size:17px}
+.rform.small{box-shadow:none;border-radius:16px;padding:2px 50px 2px 10px}
+.phead .rform.small .search .field{height:44px;padding:0;border-radius:0;background:transparent}
+.rform.small .search input{font-size:15px}
+.rform.small .dot{width:22px;height:22px;font-size:11px}
+.rform.small .swap{width:32px;height:32px;right:9px}
+.rcard{list-style:none;padding:12px 10px 4px}
+.rbig{display:flex;gap:28px;flex-wrap:wrap;margin:4px 0 16px}
+.rbig b{display:block;font-size:34px;line-height:1.05;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.rbig span{font-size:13px;color:var(--muted)}
+.ends{list-style:none;margin:0 0 6px;padding:0}
+.ends li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:15px;border-top:1px solid var(--line)}
+.ends li>span:last-child{min-width:0;overflow-wrap:anywhere}
+.ends .dot{width:22px;height:22px;font-size:11px}
+.alt{display:block;margin-top:6px;width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:9px;padding:6px 9px;font-size:14px}
+.rcard .btns{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 8px}
+.rcard details summary{cursor:pointer;color:var(--accent);font-size:14px;margin:8px 0;list-style:none}
+.rcard details summary::-webkit-details-marker{display:none}
 
 /* Vue carte */
 .explore{position:fixed;inset:0;padding-top:52px}
@@ -224,7 +258,21 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 
 <main id="home" class="home">
   <h1>L'établissement le plus proche,<br> par la route.</h1>
-  <p class="sub">EHPAD, hôpitaux, cliniques, soins de ville, en France et près des frontières.</p>
+  <p class="sub">EHPAD, hôpitaux, cliniques, soins de ville, en France et près des frontières. Ou le trajet entre deux adresses.</p>
+  <div class="seg modes" id="modeSeg" role="group" aria-label="Que voulez-vous faire ?">
+    <button type="button" data-m="etab" aria-pressed="true">Établissements proches</button>
+    <button type="button" data-m="route" aria-pressed="false">Trajet de A à B</button>
+  </div>
+  <div id="homeRoute" class="hidden">
+    <div class="rform">
+      <div class="rrow"><span class="dot a">A</span><div class="search" id="rHomeA"><div class="field"><input type="search" placeholder="Départ : adresse ou code postal" autocomplete="off" spellcheck="false" aria-label="Départ : adresse ou code postal" role="combobox" aria-expanded="false" aria-autocomplete="list"></div><ul class="sugg hidden" role="listbox"></ul></div></div>
+      <div class="rrow"><span class="dot b">B</span><div class="search" id="rHomeB"><div class="field"><input type="search" placeholder="Arrivée : adresse ou code postal" autocomplete="off" spellcheck="false" aria-label="Arrivée : adresse ou code postal" role="combobox" aria-expanded="false" aria-autocomplete="list"></div><ul class="sugg hidden" role="listbox"></ul></div></div>
+      <button class="swap" type="button" aria-label="Inverser départ et arrivée"><svg class="i" viewBox="0 0 24 24"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button>
+    </div>
+    <button class="btn big rgo" type="button">Calculer le trajet</button>
+    <p class="msg hidden" id="routeMsgHome" role="alert"></p>
+  </div>
+  <div id="homeEtab">
   <div class="search" id="searchHome">
     <div class="field">
       <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -238,6 +286,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
     <button class="pill" id="openImport2" type="button"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Plusieurs départs depuis Excel</button>
   </div>
   <p class="msg hidden" id="homeMsg" role="alert"></p>
+  </div>
   <ol class="steps3">
     <li><b>1</b>Une adresse</li>
     <li><b>2</b>Un type d'établissement</li>
@@ -260,6 +309,15 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
           <button class="go" type="button" aria-label="Rechercher"></button>
         </div>
         <ul class="sugg hidden" role="listbox"></ul>
+      </div>
+      <div id="routePanel" class="hidden">
+        <div class="rform small">
+          <div class="rrow"><span class="dot a">A</span><div class="search" id="rPanA"><div class="field"><input type="search" placeholder="Départ" autocomplete="off" spellcheck="false" aria-label="Départ" role="combobox" aria-expanded="false" aria-autocomplete="list"></div><ul class="sugg hidden" role="listbox"></ul></div></div>
+          <div class="rrow"><span class="dot b">B</span><div class="search" id="rPanB"><div class="field"><input type="search" placeholder="Arrivée" autocomplete="off" spellcheck="false" aria-label="Arrivée" role="combobox" aria-expanded="false" aria-autocomplete="list"></div><ul class="sugg hidden" role="listbox"></ul></div></div>
+          <button class="swap" type="button" aria-label="Inverser départ et arrivée"><svg class="i" viewBox="0 0 24 24"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button>
+        </div>
+        <button class="btn rgo" type="button" style="margin-top:10px;width:100%;justify-content:center">Calculer</button>
+        <p class="warnbox hidden" id="routeMsgPanel" role="alert" style="margin:10px 0 0"></p>
       </div>
       <div class="chips">
         <button class="chip" id="catChip" type="button"></button>

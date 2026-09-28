@@ -94,9 +94,22 @@ async function nominatim(q){
   const r = await fetchJSON("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&countrycodes=fr,be,lu,de,ch,it,es,ad,mc&q=" + encodeURIComponent(q.slice(0, 200)), 2);
   return r[0] ? {lat:+r[0].lat, lon:+r[0].lon, label:r[0].display_name, score:null} : null;
 }
+const CP_RE = /^\s*(\d{5})\s*$/;
+async function geocodePostal(cp){
+  const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=15&index=address&type=municipality&q=${cp}&postcode=${cp}`, 3);
+  let list = (r.features || []).filter(f => f.properties.postcode === cp)
+    .map(f => ({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:cp + " " + f.properties.label, score:1, commune:true}));
+  if (!list.length) return null;
+  const arr = list.find(x => /Arrondissement/.test(x.label));
+  if (arr) list = [arr, ...list.filter(x => x !== arr)];
+  list.forEach(x => { x.alts = list; });
+  return list[0];
+}
 async function geocode(q){
   const m = q.match(COORD_RE);
   if (m) return {lat:+m[1], lon:+m[2], label:m[1] + ", " + m[2], score:1};
+  const cp = q.match(CP_RE);
+  if (cp){ try { const g = await geocodePostal(cp[1]); if (g) return g; } catch (e){ /* recherche générale */ } }
   let best = null;
   try {
     const r = await fetchJSON("https://data.geopf.fr/geocodage/search?limit=1&q=" + encodeURIComponent(q.slice(0, 200)), 3);
@@ -115,7 +128,7 @@ async function suggest(q){
 
 /* ---------- Barre de recherche avec suggestions ---------- */
 const searches = [];
-function setupSearch(root){
+function setupSearch(root, onPick = pickStart, onMsg = homeMsg, allowPaste = true){
   const input = $("input", root), list = $(".sugg", root), go = $(".go", root);
   let items = [], sel = -1, timer = 0, seq = 0;
   const close = () => { list.classList.add("hidden"); input.setAttribute("aria-expanded", "false"); sel = -1; };
@@ -124,26 +137,31 @@ function setupSearch(root){
     list.innerHTML = items.map((s, k) => `<li role="option" data-k="${k}" aria-selected="${k === sel}"><svg class="i" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.2A7 7 0 0 1 12 3a7 7 0 0 1 7 6.8C19 14.8 12 21 12 21z"/><circle cx="12" cy="10" r="2.5"/></svg><span>${esc(s.label)}${s.sub ? `<small>${esc(s.sub)}</small>` : ""}</span></li>`).join("");
     list.classList.remove("hidden"); input.setAttribute("aria-expanded", "true");
   };
-  const pick = s => { close(); input.blur(); pickStart(s); };
+  const pick = s => { close(); input.blur(); onPick(s, input); };
   const submit = async () => {
     const q = input.value.trim(); if (!q) { input.focus(); return; }
     if (sel >= 0 && items[sel]) return pick(items[sel]);
-    close(); homeMsg("");
+    close(); onMsg("");
     input.disabled = true;
     try {
       const g = await geocode(q);
-      if (!g) homeMsg("Adresse introuvable. Précisez le numéro, la rue et la ville.");
-      else pickStart(g);
-    } catch (e){ homeMsg("La recherche d'adresse ne répond pas. Réessayez dans un instant."); }
+      if (!g) onMsg("Adresse introuvable. Précisez le numéro, la rue et la ville, ou un code postal.");
+      else onPick(g, input);
+    } catch (e){ onMsg("La recherche d'adresse ne répond pas. Réessayez dans un instant."); }
     finally { input.disabled = false; }
   };
   input.addEventListener("input", () => {
     clearTimeout(timer); sel = -1;
     const q = input.value.trim();
+    input.dispatchEvent(new CustomEvent("edited"));
     if (q.length < 3 || COORD_RE.test(q)){ items = []; close(); return; }
     timer = setTimeout(async () => {
       const my = ++seq;
-      try { const r = await suggest(q); if (my === seq){ items = r; draw(); } } catch (e){ /* pas de suggestions */ }
+      try {
+        const cp = q.match(CP_RE);
+        const r = cp ? ((await geocodePostal(cp[1])) || {alts:[]}).alts : await suggest(q);
+        if (my === seq){ items = r; draw(); }
+      } catch (e){ /* pas de suggestions */ }
     }, 160);
   });
   input.addEventListener("keydown", e => {
@@ -153,7 +171,7 @@ function setupSearch(root){
     else if (e.key === "Escape") close();
   });
   input.addEventListener("blur", () => setTimeout(close, 150));
-  input.addEventListener("paste", e => {
+  if (allowPaste) input.addEventListener("paste", e => {
     const t = e.clipboardData && e.clipboardData.getData("text/plain");
     if (!t || !(t.includes("\t") || t.trim().split(/\r?\n/).length > 1)) return;
     e.preventDefault();
@@ -163,7 +181,7 @@ function setupSearch(root){
   });
   list.addEventListener("mousedown", e => { const li = e.target.closest("li"); if (li){ e.preventDefault(); pick(items[+li.dataset.k]); } });
   if (go) go.addEventListener("click", submit);
-  searches.push(input);
+  if (onPick === pickStart) searches.push(input);
 }
 function setSearchText(t){ searches.forEach(i => { i.value = t; }); }
 function homeMsg(t){ const b = $("#homeMsg"); b.textContent = t; b.classList.toggle("hidden", !t); }
@@ -189,6 +207,12 @@ function drawMap(fit = true){
   if (!map) return;
   layerPts.clearLayers();
   const pts = [], color = COLORS[S.cat] || "#0071e3";
+  if (S.mode === "route" && S.route){
+    const {a, b} = S.route;
+    L.marker([a.lat, a.lon], {icon:startIcon(), zIndexOffset:1000, title:"Départ"}).bindTooltip("A · " + esc(a.label)).addTo(layerPts);
+    L.marker([b.lat, b.lon], {icon:numIcon("B", "#ff3b30", true), zIndexOffset:1000, title:"Arrivée"}).bindTooltip("B · " + esc(b.label)).addTo(layerPts);
+    return;
+  }
   if (S.mode === "one" && S.start){
     L.marker([S.start.lat, S.start.lon], {icon:startIcon(), zIndexOffset:1000, title:"Départ"}).addTo(layerPts);
     pts.push([S.start.lat, S.start.lon]);
@@ -306,9 +330,14 @@ function goHome(){
   if (S.busy) S.abort = true;
   $("#explore").classList.add("hidden"); $("#home").classList.remove("hidden");
   setSearchText(S.mode === "one" && S.start ? S.start.label : "");
+  setHomeMode(S.mode === "route" ? "route" : "etab");
 }
 
 function renderHead(){
+  const isRoute = S.mode === "route";
+  ["#searchPanel", ".chips", ".tools"].forEach(s => $(".phead " + s).classList.toggle("hidden", isRoute));
+  $("#routePanel").classList.toggle("hidden", !isRoute);
+  if (isRoute) return;
   const c = CAT[S.cat];
   $("#catChip").innerHTML = c ? `${tile(S.cat)}${esc(c.label)}<svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>` : "Choisir un type";
   const multi = S.mode === "multi";
@@ -328,7 +357,7 @@ function setStatus(msg, done, total, warn){
   $("#statusText").innerHTML = warn ? `<span class="warn">${esc(msg)}</span>` : esc(msg);
   const p = $("#prog"); p.classList.toggle("hidden", total == null); p.max = total || 1; p.value = done || 0;
 }
-function setBusy(b){ S.busy = b; $("#stop").classList.toggle("hidden", !b); $("#export").disabled = b || !(S.mode === "multi" ? S.multi.some(g => g.res.length) : S.results.length); }
+function setBusy(b){ S.busy = b; $("#stop").classList.toggle("hidden", !b); $("#export").disabled = b || !(S.mode === "route" ? S.route : S.mode === "multi" ? S.multi.some(g => g.res.length) : S.results.length); }
 
 async function runOne(){
   if (S.busy){ S.abort = true; while (S.busy) await sleep(50); }
@@ -523,6 +552,15 @@ function xlsx(sheetName, rows, widths){
   ]);
 }
 function exportXlsx(){
+  if (S.mode === "route"){
+    const {a, b, r} = S.route;
+    const rows = [["Départ", "Arrivée", "Distance route (km)", "Durée (min)", "Durée", "Latitude départ", "Longitude départ", "Latitude arrivée", "Longitude arrivée"],
+      [a.label, b.label, Math.round(r.distance / 100) / 10, Math.round(r.duration / 60), dur(r.duration), a.lat, a.lon, b.lat, b.lon]];
+    const url = URL.createObjectURL(xlsx("Trajet", rows, [34, 34, 14, 12, 10, 12, 12, 12, 12]));
+    const el = document.createElement("a"); el.href = url; el.download = "trajet.xlsx"; document.body.appendChild(el); el.click(); el.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    return;
+  }
   const c = CAT[S.cat];
   const kmN = m => m == null ? "" : Math.round(m / 100) / 10, minN = s => s == null ? "" : Math.round(s / 60);
   const row = (d, k) => [k + 1, d.name, d.type || c.label, d.addr, d.city, d.cc ? PAYS[d.cc] || d.cc : "France", d.tel, kmN(d.dist), minN(d.time), d.id && !d.id.startsWith("osm:") ? d.id : "", d.lat, d.lon];
@@ -545,12 +583,127 @@ function exportXlsx(){
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
+/* ---------- Trajet entre deux adresses ---------- */
+const RT = {a:{pt:null, inputs:[]}, b:{pt:null, inputs:[]}};
+function routeMsg(t){
+  ["#routeMsgHome", "#routeMsgPanel"].forEach(id => { const b = $(id); b.textContent = t; b.classList.toggle("hidden", !t); });
+}
+function setField(k, p){
+  RT[k].pt = p;
+  RT[k].inputs.forEach(i => { i.value = p ? p.label : ""; });
+}
+function fieldText(k){
+  const vis = RT[k].inputs.find(i => i.offsetParent !== null) || RT[k].inputs[0];
+  return vis.value.trim();
+}
+function setupRouteField(root, k){
+  const input = $("input", root);
+  RT[k].inputs.push(input);
+  input.addEventListener("edited", () => {
+    RT[k].pt = null;
+    RT[k].inputs.forEach(i => { if (i !== input) i.value = input.value; });
+  });
+  setupSearch(root, p => {
+    setField(k, p); routeMsg("");
+    const other = k === "a" ? "b" : "a";
+    if (RT[other].pt || fieldText(other)) runRoute();
+    else { const i = RT[other].inputs.find(x => x.offsetParent !== null); if (i) i.focus(); }
+  }, routeMsg, false);
+}
+function swapRoute(){
+  const a = RT.a.pt, b = RT.b.pt, ta = fieldText("a"), tb = fieldText("b");
+  RT.a.pt = b; RT.b.pt = a;
+  RT.a.inputs.forEach(i => { i.value = b ? b.label : tb; });
+  RT.b.inputs.forEach(i => { i.value = a ? a.label : ta; });
+  if (S.mode === "route" && RT.a.pt && RT.b.pt) runRoute();
+}
+function setHomeMode(m){
+  $$("#modeSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === m)));
+  $("#homeEtab").classList.toggle("hidden", m !== "etab");
+  $("#homeRoute").classList.toggle("hidden", m !== "route");
+  $(".steps3").classList.toggle("hidden", m !== "etab");
+}
+async function runRoute(){
+  if (S.busy){ S.abort = true; while (S.busy) await sleep(50); }
+  routeMsg("");
+  for (const k of ["a", "b"]){
+    if (RT[k].pt) continue;
+    const q = fieldText(k);
+    if (!q){ routeMsg(k === "a" ? "Indiquez le point de départ." : "Indiquez le point d'arrivée."); const i = RT[k].inputs.find(x => x.offsetParent !== null); if (i) i.focus(); return; }
+    try {
+      const g = await geocode(q);
+      if (!g){ routeMsg(`« ${q} » introuvable. Essayez une adresse complète ou un code postal.`); return; }
+      setField(k, g);
+    } catch (e){ routeMsg("La recherche d'adresse ne répond pas. Réessayez dans un instant."); return; }
+  }
+  S.mode = "route"; S.open = null; S.route = null;
+  showExplore();
+  $("#list").innerHTML = ""; $("#footInfo").textContent = "";
+  layerRoute.clearLayers(); layerPts.clearLayers();
+  setBusy(true);
+  try {
+    setStatus("Calcul de l'itinéraire le plus rapide…");
+    const r = (await osrm(`/route/v1/driving/${cstr(RT.a.pt)};${cstr(RT.b.pt)}?overview=full&geometries=geojson&steps=true`)).routes[0];
+    S.route = {a:RT.a.pt, b:RT.b.pt, r};
+    setStatus("");
+    renderRoute(); drawMap(false); drawRoute(r.geometry);
+  } catch (e){
+    setStatus(/NoRoute|NoSegment/.test(e.message) ? "Aucun itinéraire par la route entre ces deux points." : "Le calcul n'a pas abouti : " + e.message + ". Réessayez dans un instant.", null, null, true);
+  } finally { setBusy(false); }
+}
+function altSelect(k, p){
+  if (!p.alts || p.alts.length < 2) return "";
+  return `<select class="alt" style="margin-top:0" data-k="${k}" aria-label="Commune">${p.alts.map((x, i) => `<option value="${i}"${x === p ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>`;
+}
+function renderRoute(){
+  const {a, b, r} = S.route;
+  const f = p => p.lat.toFixed(6) + "," + p.lon.toFixed(6);
+  const note = [a, b].some(p => p.commune) ? "Pour un code postal, le trajet part du centre de la commune (mairie)." : "";
+  $("#list").innerHTML = `<li class="rcard">
+    <div class="rbig"><div><b>${km(r.distance)}</b><span>par la route</span></div><div><b>${dur(r.duration)}</b><span>de trajet, sans trafic</span></div></div>
+    <ol class="ends">
+      <li><span class="dot a">A</span><span>${altSelect("a", a) || esc(a.label)}</span></li>
+      <li><span class="dot b">B</span><span>${altSelect("b", b) || esc(b.label)}</span></li>
+    </ol>
+    <p class="hint">Itinéraire le plus rapide en voiture.${note ? " " + note : ""}</p>
+    <div class="btns">
+      <a class="btn" href="https://maps.apple.com/?saddr=${f(a)}&daddr=${f(b)}&dirflg=d" target="_blank" rel="noopener noreferrer">Plans</a>
+      <a class="btn sec" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${f(a)}&destination=${f(b)}" target="_blank" rel="noopener noreferrer">Google Maps</a>
+      <button class="btn sec" type="button" id="copyRoute">Copier</button>
+    </div>
+    <details><summary>Itinéraire détaillé</summary>${stepsHTML(r.legs[0].steps)}</details>
+  </li>`;
+  $("#footInfo").textContent = "Itinéraire le plus rapide";
+  setBusy(false);
+}
+
 /* ---------- Import ---------- */
 function openImport(){ showImportMsg(""); openSheet("#importSheet"); }
 
 /* ---------- Événements ---------- */
 setupSearch($("#searchHome"));
 setupSearch($("#searchPanel"));
+setupRouteField($("#rHomeA"), "a"); setupRouteField($("#rHomeB"), "b");
+setupRouteField($("#rPanA"), "a"); setupRouteField($("#rPanB"), "b");
+$$(".swap").forEach(b => b.addEventListener("click", swapRoute));
+$$(".rgo").forEach(b => b.addEventListener("click", runRoute));
+$("#modeSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setHomeMode(b.dataset.m);
+  const i = b.dataset.m === "route" ? $("#rHomeA input") : $("#searchHome input");
+  i.focus();
+});
+$("#list").addEventListener("change", e => {
+  const s = e.target.closest("select.alt"); if (!s || !S.route) return;
+  const k = s.dataset.k, p = S.route[k];
+  setField(k, p.alts[+s.value]); runRoute();
+});
+$("#list").addEventListener("click", e => {
+  if (e.target.id !== "copyRoute" || !S.route) return;
+  const {a, b, r} = S.route;
+  const t = `${a.label} → ${b.label} : ${km(r.distance)}, ${dur(r.duration)} (itinéraire le plus rapide, sans trafic)`;
+  navigator.clipboard && navigator.clipboard.writeText(t).then(() => { e.target.textContent = "Copié"; setTimeout(() => { e.target.textContent = "Copier"; }, 1500); }, () => {});
+});
 $("#brand").addEventListener("click", goHome);
 $("#openImport").addEventListener("click", openImport);
 $("#openImport2").addEventListener("click", openImport);
