@@ -315,7 +315,9 @@ out center tags;"""
                 continue
             if france.distance(Point(proj(lon, lat))) > BANDE_KM * 1000:
                 continue
-            nom = t.get("name:fr") or t.get("name") or t.get("operator") or LIBELLES_OSM[typ]
+            nom = t.get("name:fr") or t.get("name") or ""
+            if not nom:  # bâtiments ou services sans nom : souvent des doublons d'un établissement voisin
+                continue
             cle = (nom.lower(), round(lat, 3), round(lon, 3))
             if cle in vus:
                 continue
