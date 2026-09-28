@@ -142,6 +142,11 @@ async function runVerif(){
         T[a0 + i][b0 + j] = t == null ? NaN : t; D[a0 + i][b0 + j] = d == null ? NaN : d;
       }
     }
+    // Trajets manifestement faux (route bien plus courte que la ligne droite) : ignorés
+    for (let i = 0; i < nD; i++) for (let j = 0; j < nE; j++){
+      const c = crow(pt(V.dPlaces[i]), pt(V.ePlaces[j]));
+      if (c > 2000 && D[i][j] < c * 0.6){ T[i][j] = NaN; D[i][j] = NaN; }
+    }
     V.M = {T, D};
     setStatus("Analyse des affectations…");
     await sleep(30);
@@ -161,15 +166,17 @@ function vCompute(){
     r.newKm = r.newMin = null; r.why = "";
     if (!r.ePt || !r.dPt){ r.res = "nv"; r.why = "Localisation introuvable : " + [!r.ePt && r.etabQ, !r.dPt && r.docQ].filter(Boolean).join(", ") + (/^\d{5}$/.test(!r.ePt ? r.etabQ : r.docQ) ? " (code CEDEX ?)" : ""); continue; }
     const t = V.M.T[r.di][r.ei], d = V.M.D[r.di][r.ei];
-    if (isNaN(t)){ r.res = "nv"; r.why = "Aucun itinéraire par la route"; continue; }
+    if (isNaN(t)){ r.res = "nv"; r.why = "Aucun itinéraire par la route trouvé par le calcul"; continue; }
     r.newKm = d / 1000; r.newMin = t / 60;
-    if (crow(r.ePt, r.dPt) < 1000){ r.res = "nv"; r.why = "Même commune : non vérifiable avec le seul code postal"; continue; }
+    const cr = crow(r.ePt, r.dPt);
+    if (cr < 1000){ r.res = "nv"; r.why = "Même commune : non vérifiable avec le seul code postal"; continue; }
     const issues = [];
     if (r.km != null){ const dk = r.newKm - r.km; if (Math.abs(dk) > V.tolKm && Math.abs(dk) > r.km * V.tolPct / 100) issues.push(`distance ${dk > 0 ? "+" : "−"}${nf1.format(Math.abs(dk))} km`); }
     if (r.min != null){ const dm = r.newMin - r.min; if (Math.abs(dm) > V.tolMin && Math.abs(dm) > r.min * V.tolPctMin / 100) issues.push(`temps ${dm > 0 ? "+" : "−"}${Math.round(Math.abs(dm))} min`); }
     if (r.km == null && r.min == null){ r.res = "ok"; r.why = "Recalculé (pas de valeur déclarée)"; }
     else if (issues.length){ r.res = "bad"; r.why = "Écart : " + issues.join(", "); }
     else { r.res = "ok"; r.why = "Conforme"; }
+    if (r.ePt.cedex || r.dPt.cedex) r.why += " · code CEDEX rattaché à sa commune, position approchée";
   }
   // Médecin le plus proche (sans contrainte)
   const docsOk = V.docs.filter(d => d.pi >= 0);
