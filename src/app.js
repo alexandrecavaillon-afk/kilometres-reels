@@ -317,6 +317,7 @@ function drawMap(fit = true){
   if (!map) return;
   layerPts.clearLayers();
   const pts = [], color = COLORS[S.cat] || "#0071e3";
+  if (S.mode === "verif"){ drawVerifMap(fit); return; }
   if (S.mode === "route" && S.route){
     const {a, b} = S.route;
     L.marker([a.lat, a.lon], {icon:startIcon(), zIndexOffset:1000, title:"Départ"}).bindTooltip("A · " + esc(a.label)).addTo(layerPts);
@@ -440,14 +441,16 @@ function goHome(){
   if (S.busy) S.abort = true;
   $("#explore").classList.add("hidden"); $("#home").classList.remove("hidden");
   setSearchText(S.mode === "one" && S.start ? S.start.label : "");
-  setHomeMode(S.mode === "route" ? "route" : "etab");
+  setHomeMode(S.mode === "route" ? "route" : S.mode === "verif" ? "verif" : "etab");
 }
 
 function renderHead(){
-  const isRoute = S.mode === "route";
-  ["#searchPanel", "#etabChips", ".phead .tools"].forEach(s => $(s).classList.toggle("hidden", isRoute));
+  const isRoute = S.mode === "route", isVerif = S.mode === "verif";
+  ["#searchPanel", "#etabChips", ".phead .tools"].forEach(s => $(s).classList.toggle("hidden", isRoute || isVerif));
   $("#routePanel").classList.toggle("hidden", !isRoute);
-  if (isRoute) return;
+  $("#verifHead").classList.toggle("hidden", !isVerif);
+  $("#explore").classList.toggle("verif", isVerif);
+  if (isRoute || isVerif) return;
   const c = CAT[S.cat];
   $("#catChip").innerHTML = c ? `${tile(S.cat)}${esc(c.label)}<svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>` : "Choisir un type";
   const multi = S.mode === "multi";
@@ -467,7 +470,7 @@ function setStatus(msg, done, total, warn){
   $("#statusText").innerHTML = warn ? `<span class="warn">${esc(msg)}</span>` : esc(msg);
   const p = $("#prog"); p.classList.toggle("hidden", total == null); p.max = total || 1; p.value = done || 0;
 }
-function setBusy(b){ S.busy = b; $("#stop").classList.toggle("hidden", !b); $("#export").disabled = b || !(S.mode === "route" ? S.route : S.mode === "multi" ? S.multi.some(g => g.res.length) : S.results.length); }
+function setBusy(b){ S.busy = b; $("#stop").classList.toggle("hidden", !b); $("#export").disabled = b || !(S.mode === "verif" ? V.ready : S.mode === "route" ? S.route : S.mode === "multi" ? S.multi.some(g => g.res.length) : S.results.length); }
 
 async function runOne(){
   if (S.busy){ S.abort = true; while (S.busy) await sleep(50); }
@@ -662,6 +665,7 @@ function xlsx(sheetName, rows, widths){
   ]);
 }
 function exportXlsx(){
+  if (S.mode === "verif"){ exportVerif(); return; }
   if (S.mode === "route"){
     const {a, b, r} = S.route;
     const rows = [["Départ", "Arrivée", "Distance route (km)", "Durée (min)", "Durée", "Latitude départ", "Longitude départ", "Latitude arrivée", "Longitude arrivée"],
@@ -731,6 +735,8 @@ function setHomeMode(m){
   $$("#modeSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === m)));
   $("#homeEtab").classList.toggle("hidden", m !== "etab");
   $("#homeRoute").classList.toggle("hidden", m !== "route");
+  $("#homeVerif").classList.toggle("hidden", m !== "verif");
+  $(".scope").classList.toggle("hidden", false);
   $(".steps3").classList.toggle("hidden", m !== "etab");
 }
 async function runRoute(){
@@ -789,7 +795,7 @@ function renderRoute(){
 }
 
 /* ---------- Import ---------- */
-function openImport(){ showImportMsg(""); openSheet("#importSheet"); }
+function openImport(){ IMPORT_TARGET = "multi"; showImportMsg(""); openSheet("#importSheet"); }
 
 /* ---------- Événements ---------- */
 setupSearch($("#searchHome"));
@@ -856,18 +862,22 @@ $("#locate").addEventListener("click", () => {
   }, () => homeMsg("Position indisponible. Autorisez la localisation ou saisissez une adresse."), {enableHighAccuracy:true, timeout:12000});
 });
 /* Import de fichier : bouton, glisser-déposer sur la page */
-$("#file").addEventListener("change", e => { importFile(e.target.files[0]); e.target.value = ""; });
+$("#file").addEventListener("change", e => { IMPORT_TARGET = "multi"; importFile(e.target.files[0]); e.target.value = ""; });
 const dz = $("#dropZone");
 ["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, e => {
   if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes("Files")) return;
   e.preventDefault();
+  const wantVerif = !$("#verifSheet").classList.contains("hidden") || (!$("#homeVerif").classList.contains("hidden") && !$("#home").classList.contains("hidden"));
+  if (wantVerif){ if ($("#verifSheet").classList.contains("hidden")) openVerif(); $("#vDropZone").classList.add("over"); return; }
   if ($("#importSheet").classList.contains("hidden")) openImport();
   dz.classList.add("over");
 }));
 ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove("over")));
 document.addEventListener("drop", e => {
   if (!e.dataTransfer || !e.dataTransfer.files.length) return;
-  e.preventDefault(); dz.classList.remove("over"); importFile(e.dataTransfer.files[0]);
+  e.preventDefault(); dz.classList.remove("over"); $("#vDropZone").classList.remove("over");
+  IMPORT_TARGET = $("#verifSheet").classList.contains("hidden") ? "multi" : "verif";
+  importFile(e.dataTransfer.files[0]);
 });
 $("#sheetSel").addEventListener("change", () => loadSheet(+$("#sheetSel").value));
 $("#hasHeader").addEventListener("change", () => { MP.header = $("#hasHeader").checked; guessColumns(); renderMapper(); });

@@ -128,6 +128,46 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .crow input{width:20px;height:20px;accent-color:var(--accent);margin:0;flex:none}
 .cfoot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px}
 
+/* Vérification */
+#homeVerif{width:min(640px,100%)}
+.vcard{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:24px 26px;text-align:left}
+.vcard h3{margin:0 0 8px;font-size:21px;letter-spacing:-.02em}
+.vcard p{margin:0 0 10px;color:var(--muted);font-size:16px}
+.vcard ul{margin:0 0 6px;padding-left:20px;color:var(--ink);font-size:16px}
+.vcard li{margin:4px 0}
+.explore.verif .panel{width:460px}
+.vtop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.vtop b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.vstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
+.vtile{background:var(--surface);border-radius:12px;padding:8px 9px;box-shadow:0 0 0 1px var(--line)}
+.vtile b{display:block;font-size:20px;line-height:1.1;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.vtile span{display:block;font-size:11px;color:var(--muted);line-height:1.25;margin-top:2px}
+.vtile.ok b{color:#248a3d}.vtile.bad b{color:var(--warn)}.vtile.nv b{color:var(--faint)}.vtile.gain b{color:var(--accent)}
+@media (prefers-color-scheme:dark){.vtile.ok b{color:#30d158}}
+.vtabs{display:grid;grid-template-columns:repeat(3,1fr);width:100%}
+.vset{margin-top:10px;font-size:14px}
+.vset summary{cursor:pointer;color:var(--accent);list-style:none}
+.vset summary::-webkit-details-marker{display:none}
+.vgrid{display:grid;gap:8px;margin-top:8px}
+.vgrid label{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.vgrid select,.vgrid input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 7px;font-size:13px}
+.vgrid input{width:56px}
+.vdot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;margin:0 8px 0 7px}
+.item>button:has(>.vdot){grid-template-columns:26px 1fr auto}
+.vfilter{list-style:none;padding:8px 2px 6px}
+.vfilter .seg{display:flex;flex-wrap:wrap;font-size:12px}
+.vfilter .seg button{padding:5px 8px}
+.vsum{list-style:none;padding:10px;font-size:14px}
+.vsum p{margin:0 0 8px}
+.vsum .warn{color:var(--warn)}
+.who small .to{color:var(--ink);font-weight:600}
+.mini{list-style:none;margin:4px 0 0;padding:0}
+.mini li{display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:center;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
+.mini li span:last-child{text-align:right;color:var(--muted)}
+.mini em{font-style:normal;color:var(--warn)}
+.mini .vdot{margin:0 0 0 4px}
+@media (max-width:760px){.explore.verif .panel{width:auto}.vstats{grid-template-columns:repeat(2,1fr)}}
+
 /* Vue carte */
 .explore{position:fixed;inset:0;padding-top:52px}
 #map{position:absolute;inset:52px 0 0 0;background:#e8e8ed}
@@ -280,8 +320,9 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
   <h1>L'établissement le plus proche,<br> par la route.</h1>
   <p class="sub">EHPAD, hôpitaux, cliniques, soins de ville, en France et près des frontières. Ou le trajet entre deux adresses.</p>
   <div class="seg modes" id="modeSeg" role="group" aria-label="Que voulez-vous faire ?">
-    <button type="button" data-m="etab" aria-pressed="true">Établissements proches</button>
-    <button type="button" data-m="route" aria-pressed="false">Trajet de A à B</button>
+    <button type="button" data-m="etab" aria-pressed="true">Établissements</button>
+    <button type="button" data-m="route" aria-pressed="false">Trajet A → B</button>
+    <button type="button" data-m="verif" aria-pressed="false">Vérification</button>
   </div>
   <button class="scope-btn scope" type="button" aria-label="Choisir les pays des adresses"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg><span><span class="scope-pre">Adresses en</span> <b class="scope-txt">France</b></span><svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
   <div id="homeRoute" class="hidden">
@@ -292,6 +333,19 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
     </div>
     <button class="btn big rgo" type="button">Calculer le trajet</button>
     <p class="msg hidden" id="routeMsgHome" role="alert"></p>
+  </div>
+  <div id="homeVerif" class="hidden">
+    <div class="vcard">
+      <h3>Vérifiez les affectations de vos médecins</h3>
+      <p>Déposez le fichier de vos affectations : une ligne par établissement, avec le code postal ou l'adresse de l'établissement et celui du médecin qui le suit. Le site :</p>
+      <ul>
+        <li>recalcule chaque trajet et signale ceux qui ne collent pas ;</li>
+        <li>trouve le médecin le plus proche de chaque établissement ;</li>
+        <li>propose une meilleure répartition, avec la carte et un rapport Excel.</li>
+      </ul>
+      <button class="btn big open-verif" type="button">Importer le fichier des affectations</button>
+      <p class="hint">Le fichier est lu dans votre navigateur et n'est envoyé nulle part. Seuls les codes postaux ou adresses servent aux calculs.</p>
+    </div>
   </div>
   <div id="homeEtab">
   <div class="search" id="searchHome">
@@ -340,6 +394,25 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
         <button class="btn rgo" type="button" style="margin-top:10px;width:100%;justify-content:center">Calculer</button>
         <p class="warnbox hidden" id="routeMsgPanel" role="alert" style="margin:10px 0 0"></p>
         <div class="chips"><button class="chip scope-btn" type="button"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg><span class="scope-txt">France</span><svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div>
+      </div>
+      <div id="verifHead" class="hidden">
+        <div class="vtop"><b id="vFile"></b><button class="ghost open-verif" id="vNew" type="button">Autre fichier</button></div>
+        <div class="vstats" id="vStats"></div>
+        <div class="seg vtabs" id="vTabs" role="group" aria-label="Affichage">
+          <button type="button" data-t="trajets" aria-pressed="true">Trajets</button>
+          <button type="button" data-t="medecins" aria-pressed="false">Médecins</button>
+          <button type="button" data-t="props" aria-pressed="false">Propositions</button>
+        </div>
+        <details class="vset"><summary>Réglages</summary>
+          <div id="vSet" class="vgrid">
+            <label>Optimiser <select id="vMetric"><option value="time">le temps de trajet</option><option value="km">la distance</option></select></label>
+            <label>Charge par médecin <select id="vCap"><option value="same">même nombre qu'aujourd'hui</option><option value="max">au plus N établissements</option></select></label>
+            <label>N <input type="number" id="vCapN" min="1" max="50" value="2" disabled></label>
+            <label>Écart toléré, distance <span><input type="number" id="vTolPct" min="0" value="15"> % ou <input type="number" id="vTolKm" min="0" value="5"> km</span></label>
+            <label>Écart toléré, temps <span><input type="number" id="vTolPctMin" min="0" value="20"> % ou <input type="number" id="vTolMin" min="0" value="8"> min</span></label>
+            <p class="hint" style="margin:0">Une ligne est en écart quand la différence dépasse les deux seuils à la fois.</p>
+          </div>
+        </details>
       </div>
       <div class="chips" id="etabChips">
         <button class="chip" id="catChip" type="button"></button>
@@ -391,6 +464,30 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
     <div class="cfilter"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="cFilter" placeholder="Rechercher un pays" autocomplete="off" aria-label="Rechercher un pays"></div>
     <div id="cList" class="clist"></div>
     <div class="cfoot"><span id="cCount" class="hint" style="margin:0"></span><button class="btn" id="cOk" type="button">Valider</button></div>
+  </div>
+</div>
+
+<div class="backdrop hidden" id="verifSheet">
+  <div class="sheet narrow" role="dialog" aria-modal="true" aria-labelledby="vTitle">
+    <div class="top">
+      <h2 id="vTitle">Vérifier des affectations</h2>
+      <button class="close" type="button" data-close aria-label="Fermer"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="where">Une ligne par établissement, avec sa localisation et celle du médecin qui le suit. Les distances et temps déclarés sont facultatifs.</p>
+    <label class="drop-zone" id="vDropZone">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      <b>Choisir le fichier</b>ou le glisser ici · .xlsx, .csv
+      <input type="file" id="vFile2" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" aria-label="Choisir le fichier des affectations">
+    </label>
+    <div class="warnbox hidden" id="vImportMsg" role="alert"></div>
+    <div id="vMapper" class="mapper hidden">
+      <h4 id="vMapTitle"></h4>
+      <div class="f hidden" id="vSheetRow"><label class="l" for="vSheetSel">Feuille du classeur</label><select id="vSheetSel"></select></div>
+      <div id="vRoles"></div>
+      <span class="l">Aperçu</span>
+      <ol class="prev" id="vPrev"></ol>
+      <div class="row"><button type="button" class="btn" id="vGo">Vérifier</button></div>
+    </div>
   </div>
 </div>
 

@@ -200,7 +200,7 @@ function applyMapper(){
   startMulti(rows);
 }
 
-function showImportMsg(msg){ const b = $("#importMsg"); b.textContent = msg; b.classList.toggle("hidden", !msg); }
+function showImportMsg(msg){ const b = $(IMPORT_TARGET === "verif" ? "#vImportMsg" : "#importMsg"); b.textContent = msg; b.classList.toggle("hidden", !msg); }
 
 async function importFile(f){
   if (!f) return;
@@ -209,9 +209,9 @@ async function importFile(f){
     const buf = await f.arrayBuffer(), b = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
     if (b[0] === 0x50 && b[1] === 0x4B){
       if (typeof DecompressionStream === "undefined") throw new Error("ce navigateur est trop ancien pour lire les fichiers Excel. Mettez-le à jour, ou enregistrez le fichier au format CSV dans Excel");
-      openMapper(await readXlsx(buf), f.name);
+      (IMPORT_TARGET === "verif" ? openVerifMapper : openMapper)(await readXlsx(buf), f.name);
     } else if (b[0] === 0xD0 && b[1] === 0xCF){
       throw new Error("ce fichier est au format Excel 97-2003 (.xls). Dans Excel, choisissez Fichier, Enregistrer sous, puis « Classeur Excel (.xlsx) », et importez le nouveau fichier");
-    } else openMapper([{name:"", rows:csvRows(decodeText(buf))}], f.name);
-  } catch (e){ closeMapper(); showImportMsg("Import impossible : " + e.message + "."); }
+    } else (IMPORT_TARGET === "verif" ? openVerifMapper : openMapper)([{name:"", rows:csvRows(decodeText(buf))}], f.name);
+  } catch (e){ if (IMPORT_TARGET === "verif") $("#vMapper").classList.add("hidden"); else closeMapper(); showImportMsg("Import impossible : " + e.message + "."); }
 }
