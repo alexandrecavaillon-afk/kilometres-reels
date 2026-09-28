@@ -114,7 +114,9 @@ def casse(texte, debut_minuscule=False):
             out.append(m)
             continue
         base = m.upper()
-        if base in ("ST", "STE", "STS"):
+        if base.count(".") >= 2 and re.fullmatch(r"(?:[A-Z]\.)+[A-Z]?\.?", base):
+            out.append(base.replace(".", ""))
+        elif base in ("ST", "STE", "STS"):
             out.append({"ST": "Saint", "STE": "Sainte", "STS": "Saints"}[base])
         elif base in SIGLES or (2 <= len(base) <= 4 and not re.search(r"[AEIOUYÉÈÊÀÂÔÎÛ]", base) and base.isalpha()):
             out.append(base)
@@ -280,6 +282,10 @@ def frontiere_france():
     return shp_transform(proj, MultiPolygon(formes)), proj
 
 
+SERVEURS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter",
+                     "https://maps.mail.ru/osm/tools/overpass/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
+
+
 def lire_etranger():
     france, proj = frontiere_france()
     lignes, vus = {}, set()
@@ -291,9 +297,9 @@ area["ISO3166-1"="{iso}"][admin_level=2]->.a;
  nwr(area.a)["social_facility"~"^(nursing_home|assisted_living)$"]({s},{o},{n},{e}););
 out center tags;"""
         brut = None
-        for serveur in ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"):
+        for serveur in SERVEURS_OVERPASS * 2:
             try:
-                brut = telecharger(serveur, data=urllib.parse.urlencode({"data": q}).encode(), tentatives=2)
+                brut = telecharger(serveur, data=urllib.parse.urlencode({"data": q}).encode(), tentatives=1, timeout=400)
                 break
             except RuntimeError:
                 continue
@@ -316,7 +322,6 @@ out center tags;"""
             vus.add(cle)
             rue = " ".join(x for x in [t.get("addr:housenumber", ""), t.get("addr:street", "")] if x) or t.get("addr:place", "")
             ville = " ".join(x for x in [t.get("addr:postcode", ""), t.get("addr:city", "")] if x)
-            ville = (ville + " · " if ville else "") + nom_pays
             tel = t.get("phone") or t.get("contact:phone") or ""
             lignes.setdefault(OSM_VERS_CAT[typ], []).append(
                 [nom, rue, ville, round(lat, 5), round(lon, 5), tel, f"osm:{el['type'][0]}{el['id']}", iso, LIBELLES_OSM[typ]])
@@ -342,6 +347,7 @@ def ancien_etranger():
 
 # ---------------------------------------------------------------------------
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser()
     ap.add_argument("--finess", help="fichier FINESS déjà téléchargé")
     ap.add_argument("--sans-etranger", action="store_true")
