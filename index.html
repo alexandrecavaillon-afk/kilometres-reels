@@ -1559,7 +1559,17 @@ function postalCandidates(raw){
         const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=20&index=address&type=municipality&q=${cp}&postcode=${cp}`, 3);
         const fs = (r.features || []).filter(f => f.properties.postcode === cp && !/Arrondissement/.test(f.properties.label))
           .sort((a, b) => (b.properties.population || 0) - (a.properties.population || 0));
-        return fs[0] || (r.features || []).find(f => f.properties.postcode === cp) || null;
+        if (fs[0]) return fs[0];
+        // Code secondaire d'une grande ville (59800 Lille, 44200 Nantes…) : la commune porte un autre code principal.
+        // On prend la ville dominante parmi les rues de ce code, placée au centre de ces rues.
+        const r2 = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=40&index=address&q=${cp}&postcode=${cp}`, 3);
+        const st = (r2.features || []).filter(f => f.properties.postcode === cp);
+        if (!st.length) return null;
+        const by = new Map();
+        st.forEach(f => { const k = f.properties.citycode || f.properties.city; if (!by.has(k)) by.set(k, []); by.get(k).push(f); });
+        const top = [...by.values()].sort((x, y) => y.length - x.length)[0];
+        const med = a => { const v = a.slice().sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; };
+        return {geometry:{coordinates:[med(top.map(f => f.geometry.coordinates[0])), med(top.map(f => f.geometry.coordinates[1]))]}, properties:{city:top[0].properties.city, label:top[0].properties.city, postcode:cp}};
       };
       try {
         let f = await biggest(code), approx = "";
