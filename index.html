@@ -1554,12 +1554,17 @@ function postalCandidates(raw){
   const p = (async () => {
     const out = [];
     if (scopeHasFR() && /^\d{5}$/.test(code)){
-      try {
-        const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=20&index=address&type=municipality&q=${code}&postcode=${code}`, 3);
-        const fs = (r.features || []).filter(f => f.properties.postcode === code && !/Arrondissement/.test(f.properties.label))
+      const biggest = async cp => {
+        const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=20&index=address&type=municipality&q=${cp}&postcode=${cp}`, 3);
+        const fs = (r.features || []).filter(f => f.properties.postcode === cp && !/Arrondissement/.test(f.properties.label))
           .sort((a, b) => (b.properties.population || 0) - (a.properties.population || 0));
-        const f = fs[0] || (r.features || []).find(f => f.properties.postcode === code);
-        if (f) out.push({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(code + " " + (f.properties.city || f.properties.label), "fr"), cc:"fr", commune:true, score:1});
+        return fs[0] || (r.features || []).find(f => f.properties.postcode === cp) || null;
+      };
+      try {
+        let f = await biggest(code), approx = "";
+        // Code CEDEX : on se rattache à la commune du code « de base » (57403 → 57400, puis 57000)
+        if (!f && !code.endsWith("0")){ for (const base of [code.slice(0, 4) + "0", code.slice(0, 3) + "00"]){ f = await biggest(base); if (f){ approx = base; break; } } }
+        if (f) out.push({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(code + " " + (f.properties.city || f.properties.label) + (approx ? " (CEDEX, pris comme " + approx + ")" : ""), "fr"), cc:"fr", commune:true, cedex:!!approx, score:1});
       } catch (e){ /* on tente OpenStreetMap */ }
     }
     if (!onlyFR() || !out.length){
@@ -1584,7 +1589,10 @@ function postalCandidates(raw){
 async function geocode(q){
   const m = q.match(COORD_RE);
   if (m) return {lat:+m[1], lon:+m[2], label:m[1] + ", " + m[2], score:1};
-  if (isPostal(q)){ try { const c = await postalCandidates(q); if (c[0]) return c[0]; } catch (e){ /* recherche générale */ } }
+  if (isPostal(q)){
+    try { const c = await postalCandidates(q); if (c[0]) return c[0]; } catch (e){ /* recherche générale */ }
+    if (onlyFR() && /^\s*\d{5}\s*$/.test(q)) return null; // un code postal français introuvable ne doit pas tomber sur n'importe quelle adresse
+  }
   let best = null;
   if (scopeHasFR()){
     try {
@@ -2448,6 +2456,11 @@ async function runVerif(){
         T[a0 + i][b0 + j] = t == null ? NaN : t; D[a0 + i][b0 + j] = d == null ? NaN : d;
       }
     }
+    // Trajets manifestement faux (route bien plus courte que la ligne droite) : ignorés
+    for (let i = 0; i < nD; i++) for (let j = 0; j < nE; j++){
+      const c = crow(pt(V.dPlaces[i]), pt(V.ePlaces[j]));
+      if (c > 2000 && D[i][j] < c * 0.6){ T[i][j] = NaN; D[i][j] = NaN; }
+    }
     V.M = {T, D};
     setStatus("Analyse des affectations…");
     await sleep(30);
@@ -2467,15 +2480,17 @@ function vCompute(){
     r.newKm = r.newMin = null; r.why = "";
     if (!r.ePt || !r.dPt){ r.res = "nv"; r.why = "Localisation introuvable : " + [!r.ePt && r.etabQ, !r.dPt && r.docQ].filter(Boolean).join(", ") + (/^\d{5}$/.test(!r.ePt ? r.etabQ : r.docQ) ? " (code CEDEX ?)" : ""); continue; }
     const t = V.M.T[r.di][r.ei], d = V.M.D[r.di][r.ei];
-    if (isNaN(t)){ r.res = "nv"; r.why = "Aucun itinéraire par la route"; continue; }
+    if (isNaN(t)){ r.res = "nv"; r.why = "Aucun itinéraire par la route trouvé par le calcul"; continue; }
     r.newKm = d / 1000; r.newMin = t / 60;
-    if (crow(r.ePt, r.dPt) < 1000){ r.res = "nv"; r.why = "Même commune : non vérifiable avec le seul code postal"; continue; }
+    const cr = crow(r.ePt, r.dPt);
+    if (cr < 1000){ r.res = "nv"; r.why = "Même commune : non vérifiable avec le seul code postal"; continue; }
     const issues = [];
     if (r.km != null){ const dk = r.newKm - r.km; if (Math.abs(dk) > V.tolKm && Math.abs(dk) > r.km * V.tolPct / 100) issues.push(`distance ${dk > 0 ? "+" : "−"}${nf1.format(Math.abs(dk))} km`); }
     if (r.min != null){ const dm = r.newMin - r.min; if (Math.abs(dm) > V.tolMin && Math.abs(dm) > r.min * V.tolPctMin / 100) issues.push(`temps ${dm > 0 ? "+" : "−"}${Math.round(Math.abs(dm))} min`); }
     if (r.km == null && r.min == null){ r.res = "ok"; r.why = "Recalculé (pas de valeur déclarée)"; }
     else if (issues.length){ r.res = "bad"; r.why = "Écart : " + issues.join(", "); }
     else { r.res = "ok"; r.why = "Conforme"; }
+    if (r.ePt.cedex || r.dPt.cedex) r.why += " · code CEDEX rattaché à sa commune, position approchée";
   }
   // Médecin le plus proche (sans contrainte)
   const docsOk = V.docs.filter(d => d.pi >= 0);
