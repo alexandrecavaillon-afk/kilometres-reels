@@ -108,7 +108,14 @@ async function runVerif(){
         done++; setStatus(`Localisation : ${done} sur ${qs.length}`, done, qs.length);
       }
     };
-    await Promise.all(Array.from({length:6}, worker));
+    await Promise.all(Array.from({length:4}, worker));
+    // Deuxième passage, plus lent, pour les codes qui n'ont pas répondu (service saturé)
+    const retry = qs.filter(q => !place.get(q));
+    for (let k = 0; k < retry.length && !S.abort; k++){
+      setStatus(`Nouvel essai de localisation : ${k + 1} sur ${retry.length}`, k, retry.length);
+      await sleep(250);
+      try { place.set(retry[k], await geocode(retry[k])); } catch (e){ place.set(retry[k], null); }
+    }
     if (S.abort){ setStatus("Calcul arrêté."); return; }
     V.rows.forEach(r => { r.ePt = place.get(r.etabQ) || null; r.dPt = place.get(r.docQ) || null; });
     // 2. Médecins

@@ -140,6 +140,7 @@ function postalCandidates(raw){
   if (PC_CACHE.has(key)) return PC_CACHE.get(key);
   const p = (async () => {
     const out = [];
+    let ignErr = null;
     if (scopeHasFR() && /^\d{5}$/.test(code)){
       const biggest = async cp => {
         const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=20&index=address&type=municipality&q=${cp}&postcode=${cp}`, 3);
@@ -152,7 +153,7 @@ function postalCandidates(raw){
         // Code CEDEX : on se rattache à la commune du code « de base » (57403 → 57400, puis 57000)
         if (!f && !code.endsWith("0")){ for (const base of [code.slice(0, 4) + "0", code.slice(0, 3) + "00"]){ f = await biggest(base); if (f){ approx = base; break; } } }
         if (f) out.push({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(code + " " + (f.properties.city || f.properties.label) + (approx ? " (CEDEX, pris comme " + approx + ")" : ""), "fr"), cc:"fr", commune:true, cedex:!!approx, score:1});
-      } catch (e){ /* on tente OpenStreetMap */ }
+      } catch (e){ ignErr = e; }
     }
     if (!onlyFR() || !out.length){
       try {
@@ -167,6 +168,7 @@ function postalCandidates(raw){
         }
       } catch (e){ /* rien de plus */ }
     }
+    if (!out.length && ignErr) throw ignErr; // erreur réseau : on ne garde pas un résultat vide en mémoire
     return out;
   })();
   PC_CACHE.set(key, p);
@@ -177,8 +179,9 @@ async function geocode(q){
   const m = q.match(COORD_RE);
   if (m) return {lat:+m[1], lon:+m[2], label:m[1] + ", " + m[2], score:1};
   if (isPostal(q)){
-    try { const c = await postalCandidates(q); if (c[0]) return c[0]; } catch (e){ /* recherche générale */ }
-    if (onlyFR() && /^\s*\d{5}\s*$/.test(q)) return null; // un code postal français introuvable ne doit pas tomber sur n'importe quelle adresse
+    let err = null;
+    try { const c = await postalCandidates(q); if (c[0]) return c[0]; } catch (e){ err = e; }
+    if (onlyFR() && /^\s*\d{5}\s*$/.test(q)){ if (err) throw err; return null; } // un code postal français introuvable ne doit pas tomber sur n'importe quelle adresse
   }
   let best = null;
   if (scopeHasFR()){
