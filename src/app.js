@@ -85,45 +85,159 @@ async function osrm(path){
 }
 const cstr = p => p.lon.toFixed(5) + "," + p.lat.toFixed(5);
 
+/* ---------- Pays des adresses ---------- */
+const ISO = "ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug us uy uz va vc ve vg vi vn vu wf ws xk ye yt za zm zw".split(" ");
+const FREQ = ["fr", "be", "ch", "lu", "de", "it", "es", "mc", "ad", "gb", "nl", "pt", "at"];
+let RNAMES = null;
+try { RNAMES = new Intl.DisplayNames(["fr"], {type:"region"}); } catch (e){ /* ancien navigateur */ }
+const countryName = cc => { try { return RNAMES ? RNAMES.of(cc.toUpperCase()) : cc.toUpperCase(); } catch (e){ return cc.toUpperCase(); } };
+function loadScope(){
+  try { const v = JSON.parse(localStorage.getItem("kr-pays") || "null"); if (v && (v.world || (Array.isArray(v.cc) && v.cc.length))) return {world:!!v.world, cc:(v.cc || []).filter(c => ISO.includes(c))}; } catch (e){ /* stockage indisponible */ }
+  return {world:false, cc:["fr"]};
+}
+let SCOPE = loadScope();
+if (!SCOPE.world && !SCOPE.cc.length) SCOPE = {world:false, cc:["fr"]};
+const scopeHasFR = () => SCOPE.world || SCOPE.cc.includes("fr");
+const onlyFR = () => !SCOPE.world && SCOPE.cc.length === 1 && SCOPE.cc[0] === "fr";
+const singleCountry = () => !SCOPE.world && SCOPE.cc.length === 1;
+const inScope = cc => SCOPE.world || SCOPE.cc.includes((cc || "").toLowerCase());
+const scopeKey = () => SCOPE.world ? "*" : SCOPE.cc.slice().sort().join(",");
+function scopeLabel(){
+  if (SCOPE.world) return "Tous les pays";
+  if (SCOPE.cc.length <= 2) return SCOPE.cc.map(countryName).join(", ");
+  return SCOPE.cc.length + " pays";
+}
+
 /* ---------- Localisation des adresses ---------- */
 const COORD_RE = /^\s*(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)\s*$/;
+const POSTAL_RE = /^\s*(?=[A-Za-z0-9 -]*\d)[A-Za-z0-9]{2,5}(?:[ -][A-Za-z0-9]{2,4})?\s*$/;
+const isPostal = q => POSTAL_RE.test(q) && q.replace(/[^A-Za-z0-9]/g, "").length >= 3 && !/[A-Za-z]{4,}/.test(q);
+const withCountry = (label, cc) => singleCountry() || !cc ? label : label + " · " + countryName(cc);
+function shortLabel(x){
+  const a = x.address || {};
+  const city = a.city || a.town || a.village || a.municipality || a.hamlet || a.suburb || "";
+  const street = [a.house_number, a.road || a.pedestrian || a.square].filter(Boolean).join(" ");
+  const first = x.name && x.name !== city && x.name !== a.road ? x.name : street;
+  const lab = [first, [a.postcode, city].filter(Boolean).join(" ")].filter(Boolean).join(", ") || x.display_name;
+  return withCountry(lab, a.country_code);
+}
 let lastNomi = 0;
-async function nominatim(q){
+async function nominatimRaw(params){
   const wait = 1100 - (Date.now() - lastNomi); if (wait > 0) await sleep(wait);
   lastNomi = Date.now();
-  const r = await fetchJSON("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&countrycodes=fr,be,lu,de,ch,it,es,ad,mc&q=" + encodeURIComponent(q.slice(0, 200)), 2);
-  return r[0] ? {lat:+r[0].lat, lon:+r[0].lon, label:r[0].display_name, score:null} : null;
+  const cc = SCOPE.world ? "" : "&countrycodes=" + SCOPE.cc.join(",");
+  return await fetchJSON("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&accept-language=fr" + cc + "&" + params, 2);
 }
-const CP_RE = /^\s*(\d{5})\s*$/;
-async function geocodePostal(cp){
-  const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=15&index=address&type=municipality&q=${cp}&postcode=${cp}`, 3);
-  let list = (r.features || []).filter(f => f.properties.postcode === cp)
-    .map(f => ({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:cp + " " + f.properties.label, score:1, commune:true}));
-  if (!list.length) return null;
-  const arr = list.find(x => /Arrondissement/.test(x.label));
-  if (arr) list = [arr, ...list.filter(x => x !== arr)];
-  list.forEach(x => { x.alts = list; });
-  return list[0];
+async function nominatim(q){
+  const r = await nominatimRaw("limit=1&q=" + encodeURIComponent(q.slice(0, 200)));
+  return r[0] ? {lat:+r[0].lat, lon:+r[0].lon, label:shortLabel(r[0]), cc:(r[0].address || {}).country_code, score:null} : null;
+}
+/* Code postal seul : une seule proposition par pays, la plus grande ville de ce code. */
+const PC_CACHE = new Map();
+function postalCandidates(raw){
+  const code = raw.trim().toUpperCase().replace(/\s+/g, " ");
+  const key = code + "|" + scopeKey();
+  if (PC_CACHE.has(key)) return PC_CACHE.get(key);
+  const p = (async () => {
+    const out = [];
+    if (scopeHasFR() && /^\d{5}$/.test(code)){
+      try {
+        const r = await fetchJSON(`https://data.geopf.fr/geocodage/search?limit=20&index=address&type=municipality&q=${code}&postcode=${code}`, 3);
+        const fs = (r.features || []).filter(f => f.properties.postcode === code && !/Arrondissement/.test(f.properties.label))
+          .sort((a, b) => (b.properties.population || 0) - (a.properties.population || 0));
+        const f = fs[0] || (r.features || []).find(f => f.properties.postcode === code);
+        if (f) out.push({lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(code + " " + (f.properties.city || f.properties.label), "fr"), cc:"fr", commune:true, score:1});
+      } catch (e){ /* on tente OpenStreetMap */ }
+    }
+    if (!onlyFR() || !out.length){
+      try {
+        const r = await nominatimRaw("limit=10&postalcode=" + encodeURIComponent(code));
+        const seen = new Set(out.map(x => x.cc));
+        for (const x of r){
+          const a = x.address || {}, cc = a.country_code;
+          if (!cc || seen.has(cc) || !inScope(cc)) continue;
+          seen.add(cc);
+          const city = a.city || a.town || a.village || a.municipality || a.county || a.state || "";
+          out.push({lat:+x.lat, lon:+x.lon, label:withCountry((code + " " + city).trim(), cc), cc, commune:true, score:1});
+        }
+      } catch (e){ /* rien de plus */ }
+    }
+    return out;
+  })();
+  PC_CACHE.set(key, p);
+  p.catch(() => PC_CACHE.delete(key));
+  return p;
 }
 async function geocode(q){
   const m = q.match(COORD_RE);
   if (m) return {lat:+m[1], lon:+m[2], label:m[1] + ", " + m[2], score:1};
-  const cp = q.match(CP_RE);
-  if (cp){ try { const g = await geocodePostal(cp[1]); if (g) return g; } catch (e){ /* recherche générale */ } }
+  if (isPostal(q)){ try { const c = await postalCandidates(q); if (c[0]) return c[0]; } catch (e){ /* recherche générale */ } }
   let best = null;
-  try {
-    const r = await fetchJSON("https://data.geopf.fr/geocodage/search?limit=1&q=" + encodeURIComponent(q.slice(0, 200)), 3);
-    const f = r.features && r.features[0];
-    if (f) best = {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:f.properties.label, score:f.properties.score};
-  } catch (e){ /* on tente OpenStreetMap */ }
-  if (!best || best.score < 0.45){
-    try { const n = await nominatim(q); if (n) return n; } catch (e){ /* on garde le résultat IGN */ }
+  if (scopeHasFR()){
+    try {
+      const r = await fetchJSON("https://data.geopf.fr/geocodage/search?limit=1&q=" + encodeURIComponent(q.slice(0, 200)), 3);
+      const f = r.features && r.features[0];
+      if (f) best = {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(f.properties.label, "fr"), cc:"fr", score:f.properties.score};
+    } catch (e){ /* on tente OpenStreetMap */ }
+    if (best && best.score >= (onlyFR() ? 0.45 : 0.72)) return best;
   }
+  try { const n = await nominatim(q); if (n) return n; } catch (e){ /* on garde le résultat IGN */ }
   return best;
 }
+async function photon(q){
+  const r = await fetchJSON("https://photon.komoot.io/api/?limit=12&lang=fr&q=" + encodeURIComponent(q.slice(0, 200)), 1);
+  return (r.features || []).filter(f => inScope(f.properties.countrycode)).map(f => {
+    const p = f.properties, cc = (p.countrycode || "").toLowerCase();
+    const street = [p.housenumber, p.street].filter(Boolean).join(" ");
+    const first = p.name && p.name !== p.city ? p.name : street;
+    const lab = [first, [p.postcode, p.city && p.city !== first ? p.city : ""].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    return {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0], label:withCountry(lab || p.country || "", cc), cc};
+  });
+}
 async function suggest(q){
-  const r = await fetchJSON("https://data.geopf.fr/geocodage/completion/?type=StreetAddress,PositionOfInterest&maximumResponses=6&text=" + encodeURIComponent(q.slice(0, 200)), 1);
-  return (r.results || []).map(x => ({lat:x.y, lon:x.x, label:x.fulltext, sub:x.country === "PositionOfInterest" && x.city && !x.fulltext.includes(x.city) ? [x.zipcode, x.city].filter(Boolean).join(" ") : ""}));
+  if (isPostal(q)) return await postalCandidates(q);
+  const jobs = [];
+  if (scopeHasFR()) jobs.push(fetchJSON("https://data.geopf.fr/geocodage/completion/?type=StreetAddress,PositionOfInterest&maximumResponses=6&text=" + encodeURIComponent(q.slice(0, 200)), 1)
+    .then(r => (r.results || []).map(x => ({lat:x.y, lon:x.x, cc:"fr", label:withCountry(x.fulltext, "fr"), sub:x.country === "PositionOfInterest" && x.city && !x.fulltext.includes(x.city) ? [x.zipcode, x.city].filter(Boolean).join(" ") : ""}))));
+  if (!onlyFR()) jobs.push(photon(q));
+  const res = await Promise.allSettled(jobs);
+  const fr = res[0] && scopeHasFR() && res[0].status === "fulfilled" ? res[0].value : [];
+  const ph = !onlyFR() ? (res[res.length - 1].status === "fulfilled" ? res[res.length - 1].value : []) : [];
+  const seen = new Set();
+  const out = [...fr.slice(0, onlyFR() ? 6 : 3), ...ph.filter(x => !(fr.length && x.cc === "fr"))].filter(x => { const k = x.label.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return out.slice(0, 7);
+}
+
+/* ---------- Choix des pays ---------- */
+let scopeDraft = null;
+function updateScopeUI(){
+  $$(".scope-txt").forEach(e => { e.textContent = SCOPE.world && e.closest(".scope") ? "tous les pays" : scopeLabel(); });
+  $$(".scope-pre").forEach(e => { e.textContent = SCOPE.world ? "Adresses dans" : "Adresses en"; });
+}
+function openCountrySheet(){
+  scopeDraft = {world:SCOPE.world, cc:new Set(SCOPE.cc)};
+  $("#cWorld").checked = scopeDraft.world; $("#cFilter").value = "";
+  renderCountryList(); openSheet("#countrySheet");
+}
+function renderCountryList(){
+  const f = $("#cFilter").value.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const norm = t => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const row = cc => `<label class="crow"><input type="checkbox" value="${cc}"${scopeDraft.cc.has(cc) ? " checked" : ""}><span>${esc(countryName(cc))}</span></label>`;
+  const all = ISO.filter(c => !FREQ.includes(c)).sort((a, b) => countryName(a).localeCompare(countryName(b), "fr"));
+  const match = c => !f || norm(countryName(c)).includes(f) || c === f;
+  const fq = FREQ.filter(match), rest = all.filter(match);
+  $("#cList").innerHTML = (fq.length ? `<h3>Fréquents</h3>${fq.map(row).join("")}` : "") + (rest.length ? `<h3>Tous les pays</h3>${rest.map(row).join("")}` : "") || `<p class="hint">Aucun pays ne correspond.</p>`;
+  $("#cList").classList.toggle("dim", scopeDraft.world);
+  const n = scopeDraft.cc.size;
+  $("#cCount").textContent = scopeDraft.world ? "Recherche dans le monde entier" : n ? `${n} pays sélectionné${n > 1 ? "s" : ""}` : "Choisissez au moins un pays";
+  $("#cOk").disabled = !scopeDraft.world && !n;
+}
+function applyCountrySheet(){
+  if (!scopeDraft.world && !scopeDraft.cc.size) return;
+  SCOPE = {world:scopeDraft.world, cc:[...scopeDraft.cc]};
+  if (!SCOPE.cc.length) SCOPE.cc = ["fr"];
+  try { localStorage.setItem("kr-pays", JSON.stringify(SCOPE)); } catch (e){ /* stockage indisponible */ }
+  PC_CACHE.clear(); updateScopeUI(); closeSheet("#countrySheet");
 }
 
 /* ---------- Barre de recherche avec suggestions ---------- */
@@ -157,12 +271,8 @@ function setupSearch(root, onPick = pickStart, onMsg = homeMsg, allowPaste = tru
     if (q.length < 3 || COORD_RE.test(q)){ items = []; close(); return; }
     timer = setTimeout(async () => {
       const my = ++seq;
-      try {
-        const cp = q.match(CP_RE);
-        const r = cp ? ((await geocodePostal(cp[1])) || {alts:[]}).alts : await suggest(q);
-        if (my === seq){ items = r; draw(); }
-      } catch (e){ /* pas de suggestions */ }
-    }, 160);
+      try { const r = await suggest(q); if (my === seq){ items = r; draw(); } } catch (e){ /* pas de suggestions */ }
+    }, isPostal(q) && !onlyFR() ? 550 : 160);
   });
   input.addEventListener("keydown", e => {
     if (e.key === "ArrowDown" && items.length){ e.preventDefault(); sel = (sel + 1) % items.length; draw(); }
@@ -335,7 +445,7 @@ function goHome(){
 
 function renderHead(){
   const isRoute = S.mode === "route";
-  ["#searchPanel", ".chips", ".tools"].forEach(s => $(".phead " + s).classList.toggle("hidden", isRoute));
+  ["#searchPanel", "#etabChips", ".phead .tools"].forEach(s => $(s).classList.toggle("hidden", isRoute));
   $("#routePanel").classList.toggle("hidden", !isRoute);
   if (isRoute) return;
   const c = CAT[S.cat];
@@ -652,13 +762,14 @@ async function runRoute(){
   } finally { setBusy(false); }
 }
 function altSelect(k, p){
+  return "";
   if (!p.alts || p.alts.length < 2) return "";
   return `<select class="alt" style="margin-top:0" data-k="${k}" aria-label="Commune">${p.alts.map((x, i) => `<option value="${i}"${x === p ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>`;
 }
 function renderRoute(){
   const {a, b, r} = S.route;
   const f = p => p.lat.toFixed(6) + "," + p.lon.toFixed(6);
-  const note = [a, b].some(p => p.commune) ? "Pour un code postal, le trajet part du centre de la commune (mairie)." : "";
+  const note = [a, b].some(p => p.commune) ? "Pour un code postal, le trajet part du centre de la plus grande commune de ce code." : "";
   $("#list").innerHTML = `<li class="rcard">
     <div class="rbig"><div><b>${km(r.distance)}</b><span>par la route</span></div><div><b>${dur(r.duration)}</b><span>de trajet, sans trafic</span></div></div>
     <ol class="ends">
@@ -683,6 +794,12 @@ function openImport(){ showImportMsg(""); openSheet("#importSheet"); }
 /* ---------- Événements ---------- */
 setupSearch($("#searchHome"));
 setupSearch($("#searchPanel"));
+$$(".scope-btn").forEach(b => b.addEventListener("click", openCountrySheet));
+$("#cWorld").addEventListener("change", e => { scopeDraft.world = e.target.checked; renderCountryList(); });
+$("#cFilter").addEventListener("input", renderCountryList);
+$("#cList").addEventListener("change", e => { const c = e.target.value; if (e.target.checked) scopeDraft.cc.add(c); else scopeDraft.cc.delete(c); renderCountryList(); });
+$("#cOk").addEventListener("click", applyCountrySheet);
+updateScopeUI();
 setupRouteField($("#rHomeA"), "a"); setupRouteField($("#rHomeB"), "b");
 setupRouteField($("#rPanA"), "a"); setupRouteField($("#rPanB"), "b");
 $$(".swap").forEach(b => b.addEventListener("click", swapRoute));
