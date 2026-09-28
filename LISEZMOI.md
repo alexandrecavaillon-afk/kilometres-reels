@@ -10,7 +10,9 @@ Site : https://alexandrecavaillon-afk.github.io/kilometres-reels/
 2. Choisissez un type d'établissement.
 3. Les plus proches s'affichent sur la carte et dans la liste. Cliquez sur l'un d'eux pour voir le trajet, l'ouvrir dans Plans ou Google Maps, ou appeler.
 
-Pour un simple trajet : onglet « Trajet de A à B », saisissez deux adresses ou deux codes postaux. Le site donne les kilomètres et le temps de l'itinéraire le plus rapide, le tracé sur la carte et l'itinéraire détaillé. Pour un code postal, le trajet part du centre de la commune ; si plusieurs communes partagent le code, un menu permet de choisir la bonne.
+Pour un simple trajet : onglet « Trajet de A à B », saisissez deux adresses ou deux codes postaux. Le site donne les kilomètres et le temps de l'itinéraire le plus rapide, le tracé sur la carte et l'itinéraire détaillé. Pour un code postal seul, le site prend la plus grande commune de ce code et part de son centre.
+
+Pays des adresses : le bouton « Adresses en … » (sous les onglets, et dans le panneau de résultats) permet de chercher les adresses dans un pays, plusieurs, ou le monde entier. La France utilise la Géoplateforme IGN, les autres pays OpenStreetMap (Photon pour les suggestions, Nominatim pour la recherche). Le choix est mémorisé dans votre navigateur.
 
 Pour plusieurs adresses de départ : « Plusieurs départs depuis Excel », puis déposez un fichier .xlsx ou .csv (ou collez des cellules copiées depuis Excel dans la barre de recherche). Indiquez les colonnes du nom et de l'adresse, choisissez le type d'établissement : vous obtenez les 1, 3, 5 ou 10 plus proches de chaque départ, et un fichier Excel filtrable.
 
@@ -31,7 +33,7 @@ La base se met à jour seule le 3 de chaque mois (onglet Actions du dépôt, « 
 
 | Donnée | Envoyée à | Pourquoi |
 |---|---|---|
-| Le texte de l'adresse de départ | Géoplateforme IGN (data.geopf.fr), et OpenStreetMap Nominatim si l'IGN ne la trouve pas | Trouver ses coordonnées |
+| Le texte des adresses saisies | Géoplateforme IGN (data.geopf.fr) pour la France ; OpenStreetMap Photon (photon.komoot.io) et Nominatim pour les autres pays | Trouver leurs coordonnées |
 | Les coordonnées GPS | Serveur OSRM public (router.project-osrm.org, ou routing.openstreetmap.de en secours) | Calculer kilomètres et temps de trajet |
 | La zone affichée | tile.openstreetmap.org | Afficher le fond de carte |
 
