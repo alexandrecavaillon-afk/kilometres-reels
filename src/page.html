@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https://tile.openstreetmap.org; connect-src 'self' https://data.geopf.fr https://nominatim.openstreetmap.org https://router.project-osrm.org https://routing.openstreetmap.de; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="origin">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Kilomètres réels</title>
+<meta name="description" content="Trouvez l'établissement de santé ou gériatrique le plus proche, par la route.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230071e3'/%3E%3Cpath d='M16 7c-3.9 0-7 3-7 6.8 0 5 7 11.2 7 11.2s7-6.2 7-11.2C23 10 19.9 7 16 7z' fill='%23fff'/%3E%3Ccircle cx='16' cy='13.8' r='2.6' fill='%230071e3'/%3E%3C/svg%3E">
+<style>
+{{LEAFLET_CSS}}
+:root{
+  --bg:#f5f5f7; --surface:#ffffff; --surface2:#f5f5f7; --glass:rgba(255,255,255,.78); --ink:#1d1d1f; --muted:#6e6e73; --faint:#86868b;
+  --line:rgba(0,0,0,.09); --accent:#0071e3; --accent-ink:#ffffff; --accent-soft:rgba(0,113,227,.1); --warn:#b25000; --route:#0071e3;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 28px rgba(0,0,0,.08); --shadow-lg:0 2px 6px rgba(0,0,0,.05),0 24px 60px rgba(0,0,0,.16);
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Segoe UI",Roboto,Inter,Arial,sans-serif;
+  --r:18px; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#000000; --surface:#1c1c1e; --surface2:#2c2c2e; --glass:rgba(28,28,30,.8); --ink:#f5f5f7; --muted:#a1a1a6; --faint:#8e8e93;
+    --line:rgba(255,255,255,.12); --accent:#2997ff; --accent-ink:#000; --accent-soft:rgba(41,151,255,.16); --warn:#ff9f0a; --route:#2997ff;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.5); --shadow-lg:0 24px 60px rgba(0,0,0,.6); color-scheme:dark; }
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.5)}
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font:400 17px/1.47 var(--sans);letter-spacing:-.022em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+button,input,select{font:inherit;letter-spacing:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.hidden{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* Barre du haut */
+.bar{position:fixed;inset:0 0 auto 0;height:52px;z-index:900;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,env(safe-area-inset-left));
+  background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
+.brand{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;font-weight:600;font-size:17px;letter-spacing:-.02em}
+.brand .logo{width:26px;height:26px;border-radius:7px;background:var(--accent);display:grid;place-items:center}
+.brand .logo svg{width:16px;height:16px;fill:#fff;stroke:none}
+.ghost{border:0;background:transparent;color:var(--accent);padding:8px 10px;border-radius:10px;font-size:15px;display:inline-flex;align-items:center;gap:6px}
+.ghost:hover{background:var(--accent-soft)}
+
+/* Accueil */
+.home{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:clamp(110px,18vh,190px) 20px 40px;text-align:center}
+.home h1{font-size:clamp(40px,6.4vw,72px);line-height:1.05;letter-spacing:-.045em;font-weight:700;margin:0 0 16px;max-width:20ch}
+.home .sub{font-size:clamp(19px,2.2vw,24px);line-height:1.35;color:var(--muted);margin:0 0 40px;max-width:34ch;letter-spacing:-.02em}
+.search{position:relative;width:min(640px,100%);text-align:left}
+.search .field{display:flex;align-items:center;gap:12px;height:62px;padding:0 10px 0 22px;background:var(--surface);border-radius:31px;box-shadow:var(--shadow);border:1px solid var(--line);transition:box-shadow .2s}
+.search .field:focus-within{box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}
+.search .field svg{color:var(--faint)}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:19px;height:100%}
+.search input::placeholder{color:var(--faint)}
+.search .go{border:0;background:var(--accent);color:#fff;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none}
+.search .go svg{stroke:#fff}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:950;list-style:none;margin:0;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-lg);max-height:340px;overflow:auto}
+.sugg li{display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:12px;cursor:pointer;font-size:16px}
+.sugg li[aria-selected=true],.sugg li:hover{background:var(--surface2)}
+.sugg li small{display:block;color:var(--muted);font-size:13px}
+.sugg li svg{color:var(--faint)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:22px}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:980px;padding:10px 18px;font-size:15px;display:inline-flex;gap:8px;align-items:center;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill svg{width:18px;height:18px}
+.msg{margin:18px auto 0;max-width:560px;font-size:15px;color:var(--warn)}
+.steps3{display:flex;gap:clamp(18px,4vw,48px);justify-content:center;flex-wrap:wrap;margin:72px 0 0;padding:0;list-style:none;color:var(--muted);font-size:15px}
+.steps3 li{display:flex;gap:10px;align-items:center}
+.steps3 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);color:var(--ink);font-size:13px}
+.foot{margin-top:auto;padding-top:64px;font-size:12px;color:var(--faint);max-width:720px;line-height:1.5}
+.foot p{margin:0 0 6px}
+
+/* Vue carte */
+.explore{position:fixed;inset:0;padding-top:52px}
+#map{position:absolute;inset:52px 0 0 0;background:#e8e8ed}
+@media (prefers-color-scheme:dark){#map{background:#1c1c1e}}
+.panel{position:absolute;z-index:800;top:68px;left:16px;bottom:16px;width:420px;display:flex;flex-direction:column;background:var(--glass);
+  -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow-lg);overflow:hidden}
+.phead{padding:16px 16px 12px;border-bottom:1px solid var(--line)}
+.phead .search .field{height:46px;border-radius:23px;padding-left:16px;box-shadow:none;background:var(--surface)}
+.phead .search input{font-size:16px}
+.phead .search .go{display:none}
+.chips{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.chip{border:0;border-radius:980px;padding:7px 12px 7px 8px;font-size:14px;font-weight:500;display:inline-flex;gap:7px;align-items:center;background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.chip .tile{width:22px;height:22px;border-radius:6px}
+.chip .tile svg{width:14px;height:14px}
+.chip .chev{width:14px;height:14px;color:var(--faint)}
+.seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--surface2);border-radius:9px;padding:2px;font-size:13px}
+.seg button{border:0;background:transparent;border-radius:7px;padding:5px 11px;font-weight:500;color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+@media (prefers-color-scheme:dark){.seg button[aria-pressed=true]{background:#636366}}
+.tools{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap}
+.toggle{display:inline-flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:36px;height:22px;border-radius:11px;background:var(--surface2);box-shadow:inset 0 0 0 1px var(--line);position:relative;margin:0;cursor:pointer;transition:background .2s}
+.toggle input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+.toggle input:checked{background:#34c759;box-shadow:none}
+.toggle input:checked::after{transform:translateX(14px)}
+.pbody{flex:1;overflow:auto;padding:4px 8px 16px;overscroll-behavior:contain}
+.status{padding:14px 10px 6px;font-size:14px;color:var(--muted)}
+.status progress{display:block;width:100%;height:4px;margin-top:10px;accent-color:var(--accent);border-radius:2px}
+.status .warn{color:var(--warn)}
+.list{list-style:none;margin:0;padding:0}
+.item{border-radius:14px;margin:2px 0}
+.item>button{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;width:100%;padding:11px 10px;border-radius:14px}
+.item>button:hover{background:rgba(127,127,127,.08)}
+.item>button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.item.open{background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.rk{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:600;color:#fff;background:var(--accent);font-variant-numeric:tabular-nums}
+.who{min-width:0}
+.who b{display:block;font-weight:600;font-size:15px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--muted);margin-right:5px;vertical-align:1px;letter-spacing:0}
+.fig{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fig .big{display:block;font-weight:600;font-size:17px;line-height:1.2}
+.fig .sm{display:block;color:var(--muted);font-size:13px}
+.det{padding:0 12px 14px 50px;font-size:14px}
+.det p{margin:0 0 8px;color:var(--muted)}
+.det .btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.btn{border:0;background:var(--accent);color:#fff;border-radius:980px;padding:8px 15px;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn.sec{background:var(--surface2);color:var(--accent)}
+.btn:hover{text-decoration:none;filter:brightness(1.05)}
+.btn svg{width:16px;height:16px}
+.btn:disabled{opacity:.4;cursor:default}
+.det details summary{cursor:pointer;color:var(--accent);font-size:14px;margin-top:6px;list-style:none}
+.det details summary::-webkit-details-marker{display:none}
+.route-steps{list-style:none;margin:8px 0 0;padding:0;font-size:13px}
+.route-steps li{display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
+.route-steps .d{color:var(--muted)}
+.group{margin:10px 2px 4px}
+.group h3{font-size:13px;font-weight:600;color:var(--muted);text-transform:none;margin:14px 10px 4px;display:flex;justify-content:space-between;gap:10px}
+.group h3 span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);min-width:0}
+.group h3 small{display:block;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:15px}
+.pfoot{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--faint)}
+
+/* Feuille « Que cherchez-vous ? » */
+.backdrop{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:grid;place-items:center;padding:20px;animation:fade .2s ease}
+.sheet{width:min(920px,100%);max-height:min(88vh,860px);overflow:auto;background:var(--bg);border-radius:28px;box-shadow:var(--shadow-lg);padding:30px clamp(18px,4vw,40px) 34px;animation:rise .28s cubic-bezier(.2,.9,.3,1.1)}
+.sheet.narrow{width:min(600px,100%)}
+.sheet .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:6px}
+.sheet h2{font-size:clamp(26px,3.4vw,34px);letter-spacing:-.035em;line-height:1.12;margin:0}
+.sheet .where{color:var(--muted);margin:6px 0 22px;font-size:16px;overflow-wrap:anywhere}
+.close{border:0;width:34px;height:34px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;flex:none;color:var(--muted)}
+.close svg{width:16px;height:16px;stroke-width:2.4}
+.fam{margin:22px 0 0}
+.fam h3{font-size:20px;letter-spacing:-.02em;margin:0 0 12px;display:flex;align-items:baseline;gap:10px}
+.fam h3 small{font-size:14px;color:var(--muted);font-weight:400;letter-spacing:-.01em}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.card{all:unset;box-sizing:border-box;cursor:pointer;background:var(--surface);border-radius:var(--r);padding:16px 16px 15px;display:flex;flex-direction:column;gap:10px;min-height:138px;box-shadow:0 0 0 1px var(--line);transition:transform .18s ease,box-shadow .18s ease}
+.card:hover{transform:translateY(-2px) scale(1.01);box-shadow:var(--shadow)}
+.card:active{transform:scale(.98)}
+.card:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tile{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#fff}
+.tile svg{width:23px;height:23px;stroke:#fff}
+.card b{font-size:16px;font-weight:600;line-height:1.25;letter-spacing:-.015em}
+.card small{font-size:13px;color:var(--muted);line-height:1.35;flex:1}
+.card .n{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(24px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Import de fichier */
+.drop-zone{display:block;border:2px dashed var(--line);border-radius:20px;padding:34px 20px;text-align:center;color:var(--muted);cursor:pointer;position:relative;background:var(--surface)}
+.drop-zone.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop-zone b{display:block;color:var(--ink);font-size:17px;margin:8px 0 4px}
+.drop-zone svg{width:34px;height:34px;color:var(--accent)}
+.mapper{margin-top:18px;background:var(--surface);border-radius:20px;padding:18px 20px;box-shadow:0 0 0 1px var(--line)}
+.mapper h4{margin:0 0 14px;font-size:17px;overflow-wrap:anywhere}
+.mapper .f{margin-bottom:16px}
+.mapper .l{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:0 0 6px}
+.mapper select{width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:9px 12px;font-size:15px}
+.mapper .cols{display:grid;gap:6px}
+.mapper .cols label,.mapper label.chk{display:flex;gap:10px;align-items:center;font-size:15px;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.mapper input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);flex:none;margin:0}
+.mapper .prev{font-size:14px;margin:0 0 16px;padding-left:20px;color:var(--muted)}
+.mapper .prev li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapper .prev b{color:var(--ink);font-weight:500}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hint{font-size:13px;color:var(--muted);margin:12px 0 0}
+.warnbox{margin-top:14px;font-size:14px;color:var(--warn)}
+
+/* Marqueurs */
+.pin-start{width:22px;height:22px;border-radius:50%;background:var(--accent);border:4px solid #fff;box-shadow:0 0 0 7px rgba(0,113,227,.2),0 2px 6px rgba(0,0,0,.3)}
+.pin-num{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font:600 12px/1 var(--sans);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .15s}
+.pin-num.sel{transform:scale(1.3)}
+.pin-dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.leaflet-container{font-family:var(--sans)}
+.leaflet-tooltip{border-radius:10px;border:0;box-shadow:var(--shadow);padding:6px 10px;font-size:13px}
+.leaflet-bar{border:0!important;box-shadow:var(--shadow)!important;border-radius:12px!important;overflow:hidden}
+.leaflet-bar a{width:34px!important;height:34px!important;line-height:34px!important;border-color:var(--line)!important;background:var(--glass)!important;color:var(--ink)!important;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.leaflet-control-attribution{background:var(--glass)!important;color:var(--muted);border-radius:8px 0 0 0;font-size:11px}
+.leaflet-control-attribution a{color:var(--muted)}
+
+@media (max-width:760px){
+  body{font-size:16px}
+  .home{padding-top:96px}
+  .home .sub{margin-bottom:28px}
+  .search .field{height:56px}
+  .search input{font-size:17px}
+  .steps3{margin-top:44px;flex-direction:column;align-items:center;gap:10px}
+  #map{bottom:48vh}
+  .panel{top:auto;left:0;right:0;bottom:0;width:auto;height:52vh;border-radius:22px 22px 0 0;border-bottom:0}
+  .panel::before{content:"";display:block;width:38px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+  .phead{padding-top:10px}
+  .backdrop{padding:0;place-items:end stretch}
+  .sheet{border-radius:24px 24px 0 0;max-height:92vh;padding:22px 16px 30px}
+  .cards{grid-template-columns:1fr 1fr;gap:10px}
+  .card{min-height:0;padding:14px}
+  .card small{display:none}
+  .leaflet-control-zoom{display:none}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <button class="brand" id="brand" type="button" aria-label="Accueil"><span class="logo"><svg viewBox="0 0 24 24"><path d="M12 2.5c-4.1 0-7.5 3.2-7.5 7.2 0 5.3 7.5 11.8 7.5 11.8s7.5-6.5 7.5-11.8c0-4-3.4-7.2-7.5-7.2zm0 10a2.8 2.8 0 1 1 0-5.6 2.8 2.8 0 0 1 0 5.6z"/></svg></span>Kilomètres réels</button>
+  <button class="ghost" id="openImport" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg><span>Importer un fichier</span></button>
+</header>
+
+<main id="home" class="home">
+  <h1>L'établissement le plus proche,<br> par la route.</h1>
+  <p class="sub">EHPAD, hôpitaux, cliniques, soins de ville, en France et près des frontières.</p>
+  <div class="search" id="searchHome">
+    <div class="field">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" placeholder="Saisissez une adresse de départ" autocomplete="off" spellcheck="false" aria-label="Adresse de départ" role="combobox" aria-expanded="false" aria-autocomplete="list">
+      <button class="go" type="button" aria-label="Rechercher"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+    <ul class="sugg hidden" role="listbox"></ul>
+  </div>
+  <div class="actions">
+    <button class="pill" id="locate" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/></svg>Ma position</button>
+    <button class="pill" id="openImport2" type="button"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Plusieurs départs depuis Excel</button>
+  </div>
+  <p class="msg hidden" id="homeMsg" role="alert"></p>
+  <ol class="steps3">
+    <li><b>1</b>Une adresse</li>
+    <li><b>2</b>Un type d'établissement</li>
+    <li><b>3</b>Les plus proches, en km et en minutes</li>
+  </ol>
+  <footer class="foot">
+    <p id="dataInfo">Établissements : fichier FINESS du ministère de la Santé et OpenStreetMap pour les pays frontaliers.</p>
+    <p>Distances par la route calculées avec OSRM sur les données © contributeurs OpenStreetMap, sans trafic. Adresses localisées par la Géoplateforme IGN. Aucun compte, aucun cookie, aucune statistique de visite : vos adresses et vos fichiers ne sont jamais enregistrés.</p>
+  </footer>
+</main>
+
+<div id="explore" class="explore hidden">
+  <div id="map" role="region" aria-label="Carte"></div>
+  <aside class="panel" aria-label="Résultats">
+    <div class="phead">
+      <div class="search" id="searchPanel">
+        <div class="field">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="search" placeholder="Adresse de départ" autocomplete="off" spellcheck="false" aria-label="Adresse de départ" role="combobox" aria-expanded="false" aria-autocomplete="list">
+          <button class="go" type="button" aria-label="Rechercher"></button>
+        </div>
+        <ul class="sugg hidden" role="listbox"></ul>
+      </div>
+      <div class="chips">
+        <button class="chip" id="catChip" type="button"></button>
+        <span id="multiChip" class="chip hidden"></span>
+      </div>
+      <div class="tools">
+        <div class="seg" id="sortSeg" role="group" aria-label="Classer par">
+          <button type="button" data-v="km" aria-pressed="true">Distance</button>
+          <button type="button" data-v="time" aria-pressed="false">Temps</button>
+        </div>
+        <div class="seg" id="nSeg" role="group" aria-label="Nombre de résultats"></div>
+        <label class="toggle" id="foreignToggle"><input type="checkbox" id="foreign" checked> Pays voisins</label>
+      </div>
+    </div>
+    <div class="pbody" id="pbody">
+      <div class="status hidden" id="status"><span id="statusText"></span><progress id="prog" max="1" value="0"></progress></div>
+      <ol class="list" id="list"></ol>
+    </div>
+    <div class="pfoot">
+      <span id="footInfo"></span>
+      <span class="row">
+        <button class="btn sec hidden" id="stop" type="button">Arrêter</button>
+        <button class="btn sec" id="export" type="button" disabled><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg>Excel</button>
+      </span>
+    </div>
+  </aside>
+</div>
+
+<div class="backdrop hidden" id="catSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="catTitle">
+    <div class="top">
+      <h2 id="catTitle">Que cherchez-vous ?</h2>
+      <button class="close" type="button" data-close aria-label="Fermer"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="where" id="catWhere"></p>
+    <div id="families"></div>
+  </div>
+</div>
+
+<div class="backdrop hidden" id="importSheet">
+  <div class="sheet narrow" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+    <div class="top">
+      <h2 id="impTitle">Plusieurs adresses de départ</h2>
+      <button class="close" type="button" data-close aria-label="Fermer"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="where">Importez un fichier Excel ou CSV : pour chaque adresse, vous obtiendrez les établissements les plus proches, dans un fichier Excel.</p>
+    <label class="drop-zone" id="dropZone">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      <b>Choisir un fichier</b>ou le glisser ici · .xlsx, .csv
+      <input type="file" id="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" aria-label="Choisir un fichier Excel ou CSV">
+    </label>
+    <p class="hint">Vous pouvez aussi coller des cellules copiées depuis Excel dans la barre de recherche. Le fichier est lu dans votre navigateur et n'est envoyé nulle part.</p>
+    <div class="warnbox hidden" id="importMsg" role="alert"></div>
+    <div id="mapper" class="mapper hidden" role="group" aria-labelledby="mapTitle">
+      <h4 id="mapTitle"></h4>
+      <div class="f hidden" id="sheetRow"><label class="l" for="sheetSel">Feuille du classeur</label><select id="sheetSel"></select></div>
+      <div class="f"><label class="chk"><input type="checkbox" id="hasHeader"> La première ligne contient les titres</label></div>
+      <div class="f"><label class="l" for="nameCol">Colonne du nom</label><select id="nameCol"></select></div>
+      <div class="f"><span class="l" id="addrLab">Colonnes qui forment l'adresse</span><div class="cols" id="addrCols" role="group" aria-labelledby="addrLab"></div></div>
+      <div class="f hidden" id="mapPartRow"><label class="l" for="mapPart">Un calcul traite 500 adresses au maximum</label><select id="mapPart"></select></div>
+      <span class="l">Aperçu</span>
+      <ol class="prev" id="mapPrev"></ol>
+      <div class="row">
+        <button type="button" class="btn" id="mapOk">Continuer</button>
+        <button type="button" class="btn sec" id="mapCancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+{{LEAFLET_JS}}
+</script>
+<script>
+{{APP_JS}}
+</script>
+</body>
+</html>
