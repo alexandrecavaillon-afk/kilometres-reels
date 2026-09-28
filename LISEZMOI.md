@@ -10,6 +10,8 @@ Site : https://alexandrecavaillon-afk.github.io/kilometres-reels/
 2. Choisissez un type d'établissement.
 3. Les plus proches s'affichent sur la carte et dans la liste. Cliquez sur l'un d'eux pour voir le trajet, l'ouvrir dans Plans ou Google Maps, ou appeler.
 
+Pour un simple trajet : onglet « Trajet de A à B », saisissez deux adresses ou deux codes postaux. Le site donne les kilomètres et le temps de l'itinéraire le plus rapide, le tracé sur la carte et l'itinéraire détaillé. Pour un code postal, le trajet part du centre de la commune ; si plusieurs communes partagent le code, un menu permet de choisir la bonne.
+
 Pour plusieurs adresses de départ : « Plusieurs départs depuis Excel », puis déposez un fichier .xlsx ou .csv (ou collez des cellules copiées depuis Excel dans la barre de recherche). Indiquez les colonnes du nom et de l'adresse, choisissez le type d'établissement : vous obtenez les 1, 3, 5 ou 10 plus proches de chaque départ, et un fichier Excel filtrable.
 
 ## Types d'établissements
